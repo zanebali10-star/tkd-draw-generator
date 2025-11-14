@@ -62,19 +62,16 @@ if uploaded_file:
         # --- Generate PDF ---
         if st.button("Generate PDF Draw"):
             try:
-                # Filter by category
                 draw_df = df[df['category'] == selected_category]
 
-                # --- Create clean paginated PDF ---
                 pdf = FPDF()
                 pdf.set_auto_page_break(auto=True, margin=15)
                 pdf.add_page()
 
-                # --- Add Unicode-compatible fonts (regular + bold) ---
+                # --- Add Unicode fonts (regular + bold) ---
                 font_path_regular = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
                 font_path_bold = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
-                # Fallback for local runs
                 if not os.path.exists(font_path_regular):
                     os.makedirs("fonts", exist_ok=True)
                     font_path_regular = "fonts/DejaVuSans.ttf"
@@ -90,7 +87,7 @@ if uploaded_file:
                 pdf.cell(0, 10, f"Draw for Category: {selected_category}", ln=True, align='C')
                 pdf.ln(8)
 
-                # --- Draw entries ---
+                # --- Entries ---
                 pdf.set_font("DejaVu", size=12)
                 line_height = pdf.font_size * 1.5
                 max_lines_per_page = 25
@@ -109,13 +106,14 @@ if uploaded_file:
                     weight = str(row.get('weight', '')).strip()
                     belt_class = str(row.get('class', '')).strip()
 
-                    # Standard dash to avoid Unicode issues
-                    line_text = f"{idx + 1}. {name} - {club} | {belt_class} | {weight}"
-                    pdf.cell(0, line_height, txt=line_text, ln=True)
+                    text = f"{idx + 1}. {name} - {club} | {belt_class} | {weight}"
+                    pdf.cell(0, line_height, txt=text, ln=True)
                     count += 1
 
-                # --- Convert PDF to bytes ---
-                pdf_output = io.BytesIO(pdf.output(dest="S").encode("latin1"))
+                # --- Output PDF safely for fpdf2 / pyfpdf ---
+                raw = pdf.output(dest="S")
+                pdf_bytes = raw if isinstance(raw, (bytes, bytearray)) else raw.encode("latin1", "ignore")
+                pdf_output = io.BytesIO(bytes(pdf_bytes))
 
                 # --- Download button ---
                 st.download_button(

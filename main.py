@@ -1,1 +1,0 @@
-import os; os.system("pip install streamlit openpyxl pandas fpdf2")

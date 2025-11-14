@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from fpdf import FPDF
 import io
+import os
 
 # --- Page setup ---
 st.set_page_config(page_title="TKD Draw Generator", layout="centered")
@@ -69,13 +70,21 @@ if uploaded_file:
                 pdf.set_auto_page_break(auto=True, margin=15)
                 pdf.add_page()
 
+                # --- Add Unicode-compatible font (DejaVu Sans) ---
+                font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+                if not os.path.exists(font_path):
+                    os.makedirs("fonts", exist_ok=True)
+                    font_path = "fonts/DejaVuSans.ttf"  # fallback if you later include this font
+                pdf.add_font("DejaVu", "", font_path, uni=True)
+                pdf.set_font("DejaVu", size=12)
+
                 # Title
-                pdf.set_font("Arial", 'B', 16)
+                pdf.set_font("DejaVu", 'B', 16)
                 pdf.cell(0, 10, f"Draw for Category: {selected_category}", ln=True, align='C')
                 pdf.ln(8)
 
                 # Draw entries
-                pdf.set_font("Arial", size=12)
+                pdf.set_font("DejaVu", size=12)
                 line_height = pdf.font_size * 1.5
                 max_lines_per_page = 25
                 count = 0
@@ -83,20 +92,20 @@ if uploaded_file:
                 for idx, row in draw_df.iterrows():
                     if count and count % max_lines_per_page == 0:
                         pdf.add_page()
-                        pdf.set_font("Arial", 'B', 16)
+                        pdf.set_font("DejaVu", 'B', 16)
                         pdf.cell(0, 10, f"Draw for Category: {selected_category} (cont.)", ln=True, align='C')
                         pdf.ln(8)
-                        pdf.set_font("Arial", size=12)
+                        pdf.set_font("DejaVu", size=12)
 
-                    # Build line text — cleanly excluding draw numbers
-                    name = row.get('name', '')
-                    club = row.get('club', '')
-                    weight = row.get('weight', '')
-                    belt_class = row.get('class', '')
+                    name = str(row.get('name', '')).strip()
+                    club = str(row.get('club', '')).strip()
+                    weight = str(row.get('weight', '')).strip()
+                    belt_class = str(row.get('class', '')).strip()
 
-                    pdf.cell(0, line_height,
-                             txt=f"{idx + 1}. {name} – {club} | {belt_class} | {weight}",
-                             ln=True)
+                    # Use standard dash to avoid en-dash issues
+                    line_text = f"{idx + 1}. {name} - {club} | {belt_class} | {weight}"
+
+                    pdf.cell(0, line_height, txt=line_text, ln=True)
                     count += 1
 
                 # Convert PDF to bytes

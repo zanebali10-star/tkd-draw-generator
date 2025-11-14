@@ -70,20 +70,27 @@ if uploaded_file:
                 pdf.set_auto_page_break(auto=True, margin=15)
                 pdf.add_page()
 
-                # --- Add Unicode-compatible font (DejaVu Sans) ---
-                font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-                if not os.path.exists(font_path):
+                # --- Add Unicode-compatible fonts (regular + bold) ---
+                font_path_regular = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+                font_path_bold = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+                # Fallback for local runs
+                if not os.path.exists(font_path_regular):
                     os.makedirs("fonts", exist_ok=True)
-                    font_path = "fonts/DejaVuSans.ttf"  # fallback if you later include this font
-                pdf.add_font("DejaVu", "", font_path, uni=True)
+                    font_path_regular = "fonts/DejaVuSans.ttf"
+                if not os.path.exists(font_path_bold):
+                    font_path_bold = "fonts/DejaVuSans-Bold.ttf"
+
+                pdf.add_font("DejaVu", "", font_path_regular, uni=True)
+                pdf.add_font("DejaVu", "B", font_path_bold, uni=True)
                 pdf.set_font("DejaVu", size=12)
 
-                # Title
-                pdf.set_font("DejaVu", 'B', 16)
+                # --- Title ---
+                pdf.set_font("DejaVu", "B", 16)
                 pdf.cell(0, 10, f"Draw for Category: {selected_category}", ln=True, align='C')
                 pdf.ln(8)
 
-                # Draw entries
+                # --- Draw entries ---
                 pdf.set_font("DejaVu", size=12)
                 line_height = pdf.font_size * 1.5
                 max_lines_per_page = 25
@@ -92,7 +99,7 @@ if uploaded_file:
                 for idx, row in draw_df.iterrows():
                     if count and count % max_lines_per_page == 0:
                         pdf.add_page()
-                        pdf.set_font("DejaVu", 'B', 16)
+                        pdf.set_font("DejaVu", "B", 16)
                         pdf.cell(0, 10, f"Draw for Category: {selected_category} (cont.)", ln=True, align='C')
                         pdf.ln(8)
                         pdf.set_font("DejaVu", size=12)
@@ -102,16 +109,15 @@ if uploaded_file:
                     weight = str(row.get('weight', '')).strip()
                     belt_class = str(row.get('class', '')).strip()
 
-                    # Use standard dash to avoid en-dash issues
+                    # Standard dash to avoid Unicode issues
                     line_text = f"{idx + 1}. {name} - {club} | {belt_class} | {weight}"
-
                     pdf.cell(0, line_height, txt=line_text, ln=True)
                     count += 1
 
-                # Convert PDF to bytes
+                # --- Convert PDF to bytes ---
                 pdf_output = io.BytesIO(pdf.output(dest="S").encode("latin1"))
 
-                # Download button
+                # --- Download button ---
                 st.download_button(
                     label="⬇️ Download PDF Draw",
                     data=pdf_output,

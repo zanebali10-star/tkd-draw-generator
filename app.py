@@ -1,99 +1,159 @@
-import math
-import io
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
+import io
 
-st.set_page_config(page_title="Bracket Generator", layout="centered")
-st.title("🥋 TKD Bracket Generator (Printable A4 Sheets)")
+# -------------------------------
+# STREAMLIT SETUP
+# -------------------------------
+st.set_page_config(page_title="TKD Bracket Generator", layout="centered")
+st.title("🥋 TKD Bracket Generator (A4 Printable)")
 
-st.write("Upload your Excel file. Each sheet will produce ONE printable coloured bracket.")
+st.write("Upload your Excel file. Each sheet will produce one printable bracket.")
 
 uploaded = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"])
 
 if uploaded:
     excel = pd.ExcelFile(uploaded)
     sheets = excel.sheet_names
-    st.success(f"Loaded file with sheets: {', '.join(sheets)}")
+    st.success(f"Loaded sheets: {', '.join(sheets)}")
 
     for sheet in sheets:
-        st.header(sheet)
+        st.header(f"Bracket: {sheet}")
 
         try:
             df = pd.read_excel(uploaded, sheet_name=sheet)
             df.columns = [str(c).strip().lower() for c in df.columns]
 
-            # FIX: Accept both "team" and "club"
-            if "club" in df.columns:
-                club_col = "club"
-            elif "team" in df.columns:
-                club_col = "team"
-            else:
-                st.error(f"Sheet '{sheet}' must contain a column named 'team' or 'club'.")
-                continue
+            # REQUIRED COLUMNS
+            required_cols = ["team", "name", "gender", "weight", "class", "draw_position"]
+            for col in required_cols:
+                if col not in df.columns:
+                    raise ValueError(f"Missing required column: {col}")
 
-            if "name" not in df.columns:
-                st.error(f"Sheet '{sheet}' needs a 'name' column.")
-                continue
+            # Convert to strings + clean
+            df = df.astype({
+                "team": str,
+                "name": str,
+                "gender": str,
+                "weight": str,
+                "class": str,
+                "draw_position": str
+            })
+
+            # -----------------------------------
+            # ORDER COMPETITORS USING draw_position
+            # -----------------------------------
+            df["draw_position_num"] = pd.to_numeric(df["draw_position"], errors="coerce")
+            df = df.sort_values("draw_position_num")
 
             names = df["name"].tolist()
-            clubs = df[club_col].tolist()
+            teams = df["team"].tolist()
+            genders = df["gender"].tolist()
+            weight_divs = df["weight"].tolist()     # e.g. "-24"
+            classes = df["class"].tolist()
             n = len(names)
 
-            # Determine bracket size
-            bracket_size = 1
-            while bracket_size < n:
-                bracket_size *= 2
+            # -----------------------------------
+            # BUILD TITLE COMPONENTS
+            # Using only: Gender + Weight Division + Class
+            # -----------------------------------
+            # Assume all rows in the sheet share the same:
+            # gender, weight division, class
+            def expand_gender(g):
+                g = g.strip().upper()
+                return "Female" if g == "F" else "Male"
 
-            # Pad with BYEs
-            names += ["BYE"] * (bracket_size - n)
-            clubs += [""] * (bracket_size - n)
+            title_gender = expand_gender(genders[0])
+            title_weight = weight_divs[0].replace("kg", "").strip()
+            if not title_weight.endswith("kg"):
+                title_weight = f"{title_weight}kg"
 
-            # Build PDF
+            # Class: from last field, e.g. "A" or "B"
+            class_raw = classes[0].strip().split()[-1]
+            title_class = class_raw.upper()
+
+            title_text = f"{title_gender} ({title_weight}) – {title_class} Class"
+
+            # -----------------------------------
+            # BRACKET SIZE: nearest power of 2
+            # -----------------------------------
+            size = 1
+            while size < n:
+                size *= 2
+
+            # pad to bracket size
+            names += ["BYE"] * (size - n)
+            teams += [""] * (size - n)
+            classes += [""] * (size - n)
+
+            # -----------------------------------
+            # CREATE PDF
+            # -----------------------------------
             pdf = FPDF("P", "mm", "A4")
             pdf.add_page()
             pdf.set_auto_page_break(False)
 
-            pdf.set_font("Helvetica", "B", 22)
-            pdf.cell(0, 15, sheet, 0, 1, "C")
-            pdf.ln(5)
+            # TITLE
+            pdf.set_font("Helvetica", "B", 20)
+            pdf.cell(0, 12, title_text, 0, 1, "C")
+            pdf.ln(4)
 
-            # Colours
+            # COLOURS (RGB)
             PINK = (255, 182, 193)
             BLUE = (173, 216, 230)
+            YELLOW = (255, 204, 0)
 
+            # SETTINGS
             cell_h = 12
-            cell_w = 80
+            cell_w = 85
             y_start = 40
             y_gap = cell_h + 6
 
             pdf.set_font("Helvetica", size=14)
 
-            # Round 1 boxes only (simple printable form)
-            for i in range(bracket_size):
+            # -----------------------------------
+            # DRAW FIRST ROUND BOXES (PINK/BLUE)
+            # -----------------------------------
+            for i in range(size):
                 y = y_start + i * y_gap
-                color = PINK if i % 2 == 0 else BLUE
+                colour = PINK if i % 2 == 0 else BLUE
 
-                pdf.set_fill_color(*color)
+                # coloured rectangle
+                pdf.set_fill_color(*colour)
                 pdf.rect(20, y, cell_w, cell_h, "F")
 
+                # text
                 pdf.set_xy(20, y + 3)
-                label = names[i]
-                if names[i] != "BYE":
-                    label += f"  ({clubs[i]})"
+                if names[i] == "BYE":
+                    pdf.cell(cell_w, 5, "BYE")
+                else:
+                    txt = f"{names[i]}  ({teams[i]})"
+                    pdf.cell(cell_w, 5, txt)
 
-                pdf.cell(cell_w, 5, label)
+            # -----------------------------------
+            # YELLOW WINNER CONNECTOR BAR
+            # -----------------------------------
+            mid_y = y_start + (size * y_gap) / 2 - 10
+            pdf.set_fill_color(*YELLOW)
+            pdf.rect(120, mid_y, 50, 20, "F")
 
-            # Export PDF
-            output = pdf.output(dest="S").encode("latin1")
-            data = io.BytesIO(output)
+            pdf.set_xy(120, mid_y + 6)
+            pdf.set_font("Helvetica", "B", 16)
+            pdf.cell(50, 8, "WINNER", 0, 1, "C")
+
+            # -----------------------------------
+            # EXPORT PDF
+            # -----------------------------------
+            pdf_bytes = pdf.output(dest="S").encode("latin1")
+            data = io.BytesIO(pdf_bytes)
 
             st.download_button(
-                label=f"⬇️ Download bracket for {sheet}",
+                label=f"⬇️ Download {sheet} bracket",
                 data=data,
                 file_name=f"{sheet.replace(' ', '_')}.pdf",
                 mime="application/pdf"
             )
 
         except Exception as e:
-            st.error(f"Error generating bracket for '{sheet}': {e}")
+            st.error(f"Error in sheet '{sheet}': {e}")
